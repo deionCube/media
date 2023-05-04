@@ -642,22 +642,14 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
   @Override
   protected void onStreamChanged(Format[] formats, long startPositionUs, long offsetUs)
       throws ExoPlaybackException {
-    if (outputStreamInfo.streamOffsetUs == C.TIME_UNSET) {
-      // This is the first stream.
+    if (outputStreamInfo.streamOffsetUs == C.TIME_UNSET
+        || (pendingOutputStreamChanges.isEmpty()
+            && lastProcessedOutputBufferTimeUs != C.TIME_UNSET
+            && lastProcessedOutputBufferTimeUs >= largestQueuedPresentationTimeUs)) {
+      // This is the first stream, or the previous has been fully output already.
       setOutputStreamInfo(
           new OutputStreamInfo(
               /* previousStreamLastBufferTimeUs= */ C.TIME_UNSET, startPositionUs, offsetUs));
-    } else if (pendingOutputStreamChanges.isEmpty()
-        && (largestQueuedPresentationTimeUs == C.TIME_UNSET
-            || (lastProcessedOutputBufferTimeUs != C.TIME_UNSET
-                && lastProcessedOutputBufferTimeUs >= largestQueuedPresentationTimeUs))) {
-      // All previous streams have never queued any samples or have been fully output already.
-      setOutputStreamInfo(
-          new OutputStreamInfo(
-              /* previousStreamLastBufferTimeUs= */ C.TIME_UNSET, startPositionUs, offsetUs));
-      if (outputStreamInfo.streamOffsetUs != C.TIME_UNSET) {
-        onProcessedStreamChange();
-      }
     } else {
       pendingOutputStreamChanges.add(
           new OutputStreamInfo(largestQueuedPresentationTimeUs, startPositionUs, offsetUs));
@@ -1589,7 +1581,7 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
   @CallSuper
   protected void onProcessedOutputBuffer(long presentationTimeUs) {
     lastProcessedOutputBufferTimeUs = presentationTimeUs;
-    while (!pendingOutputStreamChanges.isEmpty()
+    if (!pendingOutputStreamChanges.isEmpty()
         && presentationTimeUs >= pendingOutputStreamChanges.peek().previousStreamLastBufferTimeUs) {
       setOutputStreamInfo(pendingOutputStreamChanges.poll());
       onProcessedStreamChange();
